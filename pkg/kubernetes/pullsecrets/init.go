@@ -3,8 +3,8 @@ package pullsecrets
 import (
 	"time"
 
+	"github.com/loft-sh/devpod-provider-kubernetes/pkg/docker"
 	devspacecontext "github.com/loft-sh/devspace/pkg/devspace/context"
-	"github.com/loft-sh/devspace/pkg/devspace/docker"
 	"github.com/loft-sh/devspace/pkg/util/stringutil"
 
 	"github.com/loft-sh/devspace/pkg/devspace/config/versions/latest"
