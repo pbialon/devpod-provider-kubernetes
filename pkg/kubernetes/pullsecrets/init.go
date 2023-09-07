@@ -5,7 +5,6 @@ import (
 
 	"github.com/loft-sh/devpod-provider-kubernetes/pkg/docker"
 	devspacecontext "github.com/loft-sh/devspace/pkg/devspace/context"
-	"github.com/loft-sh/devspace/pkg/util/stringutil"
 
 	"github.com/loft-sh/devspace/pkg/devspace/config/versions/latest"
 	"github.com/loft-sh/devspace/pkg/devspace/hook"
@@ -21,7 +20,7 @@ import (
 const AzureContainerRegistryUsername = "00000000-0000-0000-0000-000000000000"
 
 func (r *client) EnsurePullSecret(ctx devspacecontext.Context, dockerClient docker.Client, namespace, registryURL string) error {
-	pullSecret := &latest.PullSecretConfig{Registry: registryURL}
+	pullSecret := &PullSecretConfig{Registry: registryURL}
 
 	// try to find in pull secrets
 	if ctx.Config() != nil && ctx.Config().Config() != nil {
@@ -36,7 +35,7 @@ func (r *client) EnsurePullSecret(ctx devspacecontext.Context, dockerClient dock
 	return r.ensurePullSecret(ctx, dockerClient, namespace, pullSecret)
 }
 
-func (r *client) ensurePullSecret(ctx devspacecontext.Context, dockerClient docker.Client, namespace string, pullSecretConf *latest.PullSecretConfig) error {
+func (r *client) ensurePullSecret(ctx devspacecontext.Context, dockerClient docker.Client, namespace string, pullSecretConf *PullSecretConfig) error {
 	displayRegistryURL := pullSecretConf.Registry
 	if displayRegistryURL == "" {
 		displayRegistryURL = "hub.docker.com"
@@ -70,30 +69,8 @@ func (r *client) ensurePullSecret(ctx devspacecontext.Context, dockerClient dock
 
 // EnsurePullSecrets creates the image pull secrets
 func (r *client) EnsurePullSecrets(ctx devspacecontext.Context, dockerClient docker.Client, pullSecrets []string) (err error) {
-	defer func() {
-		if err != nil {
-			// execute on error pull secrets hooks
-			pluginErr := hook.ExecuteHooks(ctx, map[string]interface{}{
-				"PULL_SECRETS": pullSecrets,
-				"error":        err,
-			}, "error:createPullSecrets")
-			if pluginErr != nil {
-				return
-			}
-		}
-	}()
-
-	// execute before pull secrets hooks
-	pluginErr := hook.ExecuteHooks(ctx, map[string]interface{}{
-		"PULL_SECRETS": pullSecrets,
-	}, "before:createPullSecrets")
-	if pluginErr != nil {
-		return pluginErr
-	}
-
-	// create pull secrets
 	for _, pullSecretConf := range ctx.Config().Config().PullSecrets {
-		if len(pullSecrets) > 0 && !stringutil.Contains(pullSecrets, pullSecretConf.Name) {
+		if len(pullSecrets) > 0 && != contains(pullSecrets, pullSecretConf.Name) {
 			continue
 		}
 
@@ -102,14 +79,6 @@ func (r *client) EnsurePullSecrets(ctx devspacecontext.Context, dockerClient doc
 		if err != nil {
 			return err
 		}
-	}
-
-	// execute after pull secrets hooks
-	pluginErr = hook.ExecuteHooks(ctx, map[string]interface{}{
-		"PULL_SECRETS": pullSecrets,
-	}, "after:createPullSecrets")
-	if pluginErr != nil {
-		return pluginErr
 	}
 
 	return nil
@@ -161,7 +130,7 @@ func (r *client) addPullSecretsToServiceAccount(ctx devspacecontext.Context, nam
 	return nil
 }
 
-func (r *client) createPullSecret(ctx devspacecontext.Context, dockerClient docker.Client, pullSecret *latest.PullSecretConfig) error {
+func (r *client) createPullSecret(ctx devspacecontext.Context, dockerClient docker.Client, pullSecret *PullSecretConfig) error {
 	username := pullSecret.Username
 	password := pullSecret.Password
 	if username == "" && password == "" && dockerClient != nil {
@@ -211,4 +180,13 @@ func (r *client) createPullSecret(ctx devspacecontext.Context, dockerClient dock
 	}
 
 	return nil
+}
+
+func contains(haystack []string, needle string) bool {
+	for _, v := range haystack {
+		if v == needle {
+			return true
+		}
+	}
+	return false
 }
