@@ -2,14 +2,21 @@ package docker
 
 import (
 	"context"
-	"strings"
 
-	cliTypes "github.com/docker/cli/cli/config/types"
-	"github.com/docker/docker/api/types"
+	typesRegistry "github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/registry"
-	"github.com/loft-sh/devspace/pkg/devspace/config/versions/util"
-	"github.com/pkg/errors"
+	"gopkg.in/yaml.v2"
 )
+
+// GetAuthConfig returns the AuthConfig for a Docker registry from the Docker credential helper
+func (c *client) GetAuthConfig(ctx context.Context, registryURL string, checkCredentialsStore bool) (*typesRegistry.AuthConfig, error) {
+	isDefaultRegistry, serverAddress, err := c.GetRegistryEndpoint(ctx, registryURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return getDefaultAuthConfig(checkCredentialsStore, serverAddress, isDefaultRegistry)
+}
 
 // GetRegistryEndpoint retrieves the correct registry url
 func (c *client) GetRegistryEndpoint(ctx context.Context, registryURL string) (bool, string, error) {
@@ -19,87 +26,6 @@ func (c *client) GetRegistryEndpoint(ctx context.Context, registryURL string) (b
 	}
 
 	return registryURL == authServer, registryURL, nil
-}
-
-// GetAuthConfig returns the AuthConfig for a Docker registry from the Docker credential helper
-func (c *client) GetAuthConfig(ctx context.Context, registryURL string, checkCredentialsStore bool) (*types.AuthConfig, error) {
-	isDefaultRegistry, serverAddress, err := c.GetRegistryEndpoint(ctx, registryURL)
-	if err != nil {
-		return nil, err
-	}
-
-	return getDefaultAuthConfig(checkCredentialsStore, serverAddress, isDefaultRegistry)
-}
-
-// Login logs the user into docker
-func (c *client) Login(ctx context.Context, registryURL, user, password string, checkCredentialsStore, saveAuthConfig, relogin bool) (*types.AuthConfig, error) {
-	isDefaultRegistry, serverAddress, err := c.GetRegistryEndpoint(ctx, registryURL)
-	if err != nil {
-		return nil, err
-	}
-
-	authConfig, err := getDefaultAuthConfig(checkCredentialsStore, serverAddress, isDefaultRegistry)
-	if err != nil || authConfig.Username == "" || authConfig.Password == "" || relogin {
-		authConfig.Username = strings.TrimSpace(user)
-		authConfig.Password = strings.TrimSpace(password)
-	}
-
-	// Check if docker is installed
-	_, err = c.Ping(ctx)
-	if err != nil {
-		// Docker is not installed, we cannot use client
-		service, err := registry.NewService(registry.ServiceOptions{})
-		if err != nil {
-			return nil, err
-		}
-
-		_, token, err := service.Auth(ctx, authConfig, "")
-		if err != nil {
-			return nil, err
-		}
-
-		if token != "" {
-			authConfig.Password = ""
-			authConfig.IdentityToken = token
-		}
-	} else {
-		// Docker is installed, we can use client
-		response, err := c.RegistryLogin(ctx, *authConfig)
-		if err != nil {
-			return nil, err
-		}
-
-		if response.IdentityToken != "" {
-			authConfig.Password = ""
-			authConfig.IdentityToken = response.IdentityToken
-		}
-	}
-
-	if saveAuthConfig {
-		configfile, err := LoadDockerConfig()
-		if err != nil {
-			return nil, err
-		}
-
-		// convert
-		authconfigConverted := &cliTypes.AuthConfig{}
-		err = util.Convert(authConfig, authconfigConverted)
-		if err != nil {
-			return nil, err
-		}
-
-		err = configfile.GetCredentialsStore(serverAddress).Store(*authconfigConverted)
-		if err != nil {
-			return nil, errors.Errorf("Error saving auth info in credentials store: %v", err)
-		}
-
-		err = configfile.Save()
-		if err != nil {
-			return nil, errors.Errorf("Error saving docker config: %v", err)
-		}
-	}
-
-	return authConfig, nil
 }
 
 func (c *client) getOfficialServer(ctx context.Context) string {
@@ -120,8 +46,8 @@ func (c *client) getOfficialServer(ctx context.Context) string {
 	return serverAddress
 }
 
-func getDefaultAuthConfig(checkCredStore bool, serverAddress string, isDefaultRegistry bool) (*types.AuthConfig, error) {
-	var authconfig types.AuthConfig
+func getDefaultAuthConfig(checkCredStore bool, serverAddress string, isDefaultRegistry bool) (*typesRegistry.AuthConfig, error) {
+	var authconfig typesRegistry.AuthConfig
 	var err error
 
 	if !isDefaultRegistry {
@@ -138,7 +64,7 @@ func getDefaultAuthConfig(checkCredStore bool, serverAddress string, isDefaultRe
 			}
 
 			// convert
-			err = util.Convert(authconfigOrig, &authconfig)
+			err = convert(authconfigOrig, &authconfig)
 			if err != nil {
 				authconfig.ServerAddress = serverAddress
 				return &authconfig, err
@@ -148,4 +74,16 @@ func getDefaultAuthConfig(checkCredStore bool, serverAddress string, isDefaultRe
 
 	authconfig.ServerAddress = serverAddress
 	return &authconfig, err
+}
+
+// convert converts the old object into the new object through yaml serialization / deserialization
+func convert(old interface{}, new interface{}) error {
+	o, err := yaml.Marshal(old)
+	if err != nil {
+		return err
+	}
+	if err := yaml.Unmarshal(o, new); err != nil {
+		return err
+	}
+	return nil
 }

@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -16,7 +15,6 @@ import (
 	"github.com/loft-sh/devspace/pkg/util/log"
 
 	dockertypes "github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/filters"
 	dockerclient "github.com/docker/docker/client"
 	"github.com/docker/go-connections/tlsconfig"
 	"github.com/pkg/errors"
@@ -26,22 +24,7 @@ var errNotMinikube = errors.New("not a minikube context")
 
 // Client contains all functions required to interact with docker
 type Client interface {
-	Ping(ctx context.Context) (dockertypes.Ping, error)
-	NegotiateAPIVersion(ctx context.Context)
-
-	ImageBuild(ctx context.Context, context io.Reader, options dockertypes.ImageBuildOptions) (dockertypes.ImageBuildResponse, error)
-	ImageBuildCLI(ctx context.Context, workingDir string, environ expand.Environ, useBuildkit bool, context io.Reader, writer io.Writer, additionalArgs []string, options dockertypes.ImageBuildOptions, log log.Logger) error
-
-	ImagePush(ctx context.Context, ref string, options dockertypes.ImagePushOptions) (io.ReadCloser, error)
-
-	Login(ctx context.Context, registryURL, user, password string, checkCredentialsStore, saveAuthConfig, relogin bool) (*dockertypes.AuthConfig, error)
 	GetAuthConfig(ctx context.Context, registryURL string, checkCredentialsStore bool) (*dockertypes.AuthConfig, error)
-
-	ParseProxyConfig(buildArgs map[string]*string) map[string]*string
-
-	DeleteImageByName(ctx context.Context, imageName string, log log.Logger) ([]dockertypes.ImageDeleteResponseItem, error)
-	DeleteImageByFilter(ctx context.Context, filter filters.Args, log log.Logger) ([]dockertypes.ImageDeleteResponseItem, error)
-	DockerAPIClient() dockerclient.CommonAPIClient
 }
 
 // Client is a client for docker
